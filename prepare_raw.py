@@ -36,7 +36,7 @@ def get_bufidx():
     return bufidx
 
 def prepare(klass):
-    mydb = MyDataBase(db_path=f"{settings['data_root']}/database/default.db")
+    mydb = MyDataBase(db_path=f"{home}/.default.db")
 
     X1 = np.empty((0))
     X2 = np.empty((0))

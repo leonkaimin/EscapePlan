@@ -18,7 +18,7 @@ from neuralnet import MyNeuralNet
 from argparse import ArgumentParser
 import re
 
-mydb = MyDataBase(db_path=f"{settings['data_root']}/database/default.db")
+mydb = MyDataBase(db_path=f"{home}/.default.db")
 
 def get_bufidx():
     fname = f"{settings['data_root']}/bufidx.csv"

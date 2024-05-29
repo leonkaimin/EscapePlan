@@ -183,7 +183,7 @@ def download_NPM(y, season):
             os.remove(local_filename)
             print(f"remove {local_filename}")
         else:
-            return True
+            return False
 
     url = 'https://mops.twse.com.tw/mops/web/t163sb06'
     form_data = {
@@ -236,7 +236,7 @@ def download_EPS(y, season):
         if redownload == True:
             os.remove(local_filename)
         else:
-            return True
+            return False
 
     url = 'https://mops.twse.com.tw/mops/web/t163sb04'
     form_data = {
@@ -303,7 +303,7 @@ def download_BOOK(y, season):
         if redownload == True:
             os.remove(local_filename)
         else:
-            return True
+            return False
 
     url = 'https://mops.twse.com.tw/mops/web/ajax_t163sb05'
     form_data = {

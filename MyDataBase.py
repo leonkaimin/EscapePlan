@@ -125,7 +125,7 @@ class MyDataBase():
 
     sleep_time = 1
 
-    def __init__(self, db_path=f"{settings['data_root']}/database/default.db"):
+    def __init__(self, db_path=f"{home}/.default.db"):
 
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.create_table()
@@ -575,8 +575,7 @@ class MyDataBase():
 
         arr = []
         c = self.conn.cursor()
-        query = SELECT_DISTINCT_CODE_BOND.format(
-            day.strftime("%Y-%m-%d"))
+        query = SELECT_DISTINCT_CODE_BOND
         # print(query)
         c.execute(query)
         tab = c.fetchall()
@@ -588,7 +587,7 @@ class MyDataBase():
         # print(arr)
         return arr
 
-    def load_codename(self, klass=None, like=None):
+    def load_codename(self, date = None, klass=None, like=None):
         whereklass = ''
         wherecode = ''
         if like is not None:
@@ -598,18 +597,26 @@ class MyDataBase():
             whereklass = f" AND CLASS like '{klass}%'"
         arr = []
         c = self.conn.cursor()
-        query = SELECT_DISTINCT_CODE.format(whereklass, wherecode)
+
+        if date is None:
+            query = SELECT_DISTINCT_CODE.format(whereklass, wherecode)
+        else:
+            query = SELECT_DISTINCT_CODE_STOCK.format(date.strftime('%Y-%m-%d'))
+
         # print(query)
         c.execute(query)
         tab = c.fetchall()
+        if len(tab) == 0 and date is not None:
+            return self.load_codename(date=date-Datetime.timedelta(days=1))
+
         for i in range(len(tab)):
             arr.append(tab[i])
         # print(arr)
         return arr
 
-    def load_code(self, klass=None, like=None):
+    def load_code(self, date=None, klass=None, like=None):
 
-        codes = [c[0] for c in self.load_codename(klass=klass, like=like)]
+        codes = [c[0] for c in self.load_codename(date=date, klass=klass, like=like)]
 
         # print(codes)
         return codes
@@ -719,8 +726,7 @@ class MyDataBase():
     def download_fund_to_sqlite(self, y, m, d):
 
         date = Date(y, m, d).strftime('%Y-%m-%d')
-        fund_fname = f'./fund/' + \
-            Date(y, m, d).strftime('%Y_%m_%d') + '.csv'
+        fund_fname = f"{settings['data_root']}/fund/{y}_{m}_{d}.csv"
 
         if not os.path.isfile(fund_fname):
             fund_fname = download_fund_csv_file(y, m, d)
@@ -730,9 +736,12 @@ class MyDataBase():
             return False
 
         with open(fund_fname, "r", encoding="cp950") as csvfile:
-            fund_data = csv.reader(csvfile)
-            rows = [r for r in fund_data]
+            data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{y}-{m}-{d} fund empty")
+                return False
 
+            rows = [r for r in data]
             count = 0
             for r in rows:
 
@@ -790,8 +799,11 @@ class MyDataBase():
             return False
 
         with open(fund_fname, "r") as csvfile:
-            fund_data = csv.reader(csvfile)
-            rows = [r for r in fund_data]
+            data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{y}-{m}-{d} fund empty")
+                return False
+            rows = [r for r in data]
 
             count = 0
             for r in rows:
@@ -835,9 +847,15 @@ class MyDataBase():
         if filename is None:
             print("File is not on-line %s" % (date.strftime('%Y-%m-%d')))
             return False
-
+        
+        count = 0
         with open(filename, "r", encoding="cp950") as csvfile:
+
             data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{date.strftime('%Y-%m-%d')} listed empty")
+                return False
+            
             rows = [r for r in data]
             i_code = None
             i_name = None
@@ -909,6 +927,9 @@ class MyDataBase():
                 if len(r) < vindex:
                     continue
 
+                if "=\"0" in r[i_code] and not "=\"00" in r[i_code]:
+                    continue
+
                 try:
                     code = r[i_code]
                     name = r[i_name]
@@ -943,8 +964,10 @@ class MyDataBase():
                     0 if cprice == '--' else locale.atof(cprice),
                     0 if fluctuation == '--' else locale.atof(fluctuation)
                 )
+                count += 1
 
-        print(f"{date.strftime('%Y-%m-%d')} listed OK")
+        print(f"{date.strftime('%Y-%m-%d')} listed {count} OK")
+        
         return True
 
     def toDict(self, tab, length=None, reverse=False):
@@ -1004,9 +1027,12 @@ class MyDataBase():
 
     def download_revenue_to_sqlite(self, date):
         filename = f"{settings['data_root']}/revenue/t21sc03_{date.year-1911}_{date.month}.csv"
-        with open(filename, "r", encoding="cp950") as csvfile:
-            fund_data = csv.reader(csvfile)
-            rows = [r for r in fund_data]
+        with open(filename, "r", encoding="utf-8") as csvfile:
+            data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{date.strftime('%Y-%m-%d')} revenue empty")
+                return False
+            rows = [r for r in data]
             rows.pop(0)
             count = 0
             for r in rows:
@@ -1041,7 +1067,12 @@ class MyDataBase():
             return False
 
         with open(filename, "r", encoding="cp950") as csvfile:
+
             data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{date.strftime('%Y-%m-%d')} NPM empty")
+                return False
+            
             rows = [r for r in data]
             rows.pop(0)
             count = 0
@@ -1067,10 +1098,15 @@ class MyDataBase():
         date = f"{year+1911}Q{season}"
         filename = f"{settings['data_root']}/EPS/eps{year}Q{season}.csv"
         with open(filename, "r", encoding="cp950") as csvfile:
+
             data = csv.reader(csvfile)
             rows = [r for r in data]
+            if len(rows) == 0:
+                print(f"{date.strftime('%Y-%m-%d')} book empty")
+                return False
+            
             count = 0
-
+            vindex = None
             for r in rows:
                 if "出表日期" in r[0]:
                     vindex = 0
@@ -1085,10 +1121,15 @@ class MyDataBase():
 
                 code = r[3]
                 name = r[4]
+
+                if vindex is None:
+                    print(f"{code} {name} empty")
+                    return False
+
                 try:
                     value = float(r[vindex])
                 except Exception as e:
-                    print(e)
+                    print(f"{e}")
                     value = 0
                     self.commit()
 
@@ -1115,6 +1156,10 @@ class MyDataBase():
         filename = f"{settings['data_root']}/ETFdiv/ETFdiv{year}.csv"
         with open(filename, "r", encoding='utf-8') as csvfile:
             data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{date.strftime('%Y-%m-%d')} etfdiv empty")
+                return False
+            
             rows = [r for r in data]
             count = 0
 
@@ -1289,8 +1334,12 @@ class MyDataBase():
         with open(filename, "r", encoding="cp950") as csvfile:
             data = csv.reader(csvfile)
             rows = [r for r in data]
+            if len(rows) == 0:
+                print(f"{date.strftime('%Y-%m-%d')} book empty")
+                return False
+            
             count = 0
-
+            vindex = None
             for r in rows:
                 if "出表日期" in r[0]:
                     vindex = 0
@@ -1304,6 +1353,11 @@ class MyDataBase():
 
                 code = r[3]
                 name = r[4]
+
+                if vindex is None:
+                    print(f"{code} {name} empty")
+                    return False
+
                 try:
                     value = float(r[vindex])
                 except Exception as e:
@@ -1342,8 +1396,12 @@ class MyDataBase():
         with open(local_filename, "wb") as file:
             file.write(response.content)
 
-        with open(local_filename, "r") as csvfile:
+        with open(local_filename, "r", encoding='big5-hkscs') as csvfile:
             data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{local_filename} basic empty")
+                return False
+            
             for r in data:
                 if "基金代號" in r[0]:
                     continue
@@ -1370,8 +1428,12 @@ class MyDataBase():
         with open(local_filename, "wb") as file:
             file.write(response.content)
 
-        with open(local_filename, "r") as csvfile:
+        with open(local_filename, "r", encoding='big5-hkscs') as csvfile:
             data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{local_filename} basic empty")
+                return False
+            
             for r in data:
                 if "基金代號" in r[0]:
                     continue
@@ -1537,8 +1599,12 @@ class MyDataBase():
             return False
 
         with open(amount_fname, "r") as csvfile:
-            amount_data = csv.reader(csvfile)
-            rows = [r for r in amount_data]
+            data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{date.strftime('%Y-%m-%d')} amount empty")
+                return False
+            
+            rows = [r for r in data]
 
             count = 0
             for r in rows:
@@ -1574,9 +1640,11 @@ class MyDataBase():
             return False
 
         with open(amount_fname, "r") as csvfile:
-            amount_data = csv.reader(csvfile)
-            rows = [r for r in amount_data]
-
+            data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{date.strftime('%Y-%m-%d')} amount empty")
+                return False
+            rows = [r for r in data]
             count = 0
             for r in rows:
                 if self.insert_amount_table(date, r, OTC=True):
@@ -1606,12 +1674,16 @@ class MyDataBase():
             fname = download_legal_csv_file(
                 y, m, d)
             Time.sleep(3)
+
         if fname is None:
             print("File is not on-line %s" % (date))
             return False
 
         with open(fname, "r", encoding="cp950") as csvfile:
             data = csv.reader(csvfile)
+            if not any(data):
+                print(f"{date} legal empty")
+                return False
 
             rows = [r for r in data]
 
@@ -1620,7 +1692,6 @@ class MyDataBase():
             legal_idx = None
             code_idx = None
             name_idx = None
-            row_idx = 0
             for r in rows.copy():
 
                 if len(r) == 0:
@@ -1641,7 +1712,6 @@ class MyDataBase():
                             legal_idx = i
                         i += 1
                     break
-                row_idx += 1
 
             if legal_idx is None:
                 print(f'No legal idx')
@@ -1662,14 +1732,7 @@ class MyDataBase():
                     count = count + 1
 
             if (count == 0):
-                day = Date(y, m, d).weekday()
-                print("{} Empty legal csv table ".format(date), end="")
-                if (day == 5 or day == 6):
-                    print("Weekend OK", end="")
-                    print()
-                    return False
-
-                print("{} legal count 0 failed".format(date))
+                print("{} legal empty count 0 failed".format(date))
                 return False
 
             print("{} legal {} OK".format(date, count))
@@ -1678,22 +1741,26 @@ class MyDataBase():
     def download_margin_to_sqlite(self, y, m, d):
 
         date = "{}-{}-{}".format(y, str2d(m), str2d(d))
-        margin_fname = f"{settings['data_root']}/margin/" + \
-            str(y) + '_' + str2d(m) + '_' + str2d(d) + ".csv"
+        local_filename = f"{settings['data_root']}/margin/{y}_{m}_{d}.csv"
 
-        if not os.path.isfile(margin_fname):
-            margin_fname = download_margin_csv_file(
+        if not os.path.isfile(local_filename):
+            local_filename = download_margin_csv_file(
                 y, m, d)
             Time.sleep(3)
-        if margin_fname is None:
+
+        if local_filename is None:
             print("File is not on-line %s" % (date))
             return False
 
-        with open(margin_fname, "r", encoding="cp950") as csvfile:
-            margin_data = csv.reader(csvfile)
+        with open(local_filename, "r", encoding="cp950") as csvfile:
 
-            rows = [r for r in margin_data]
+            data = csv.reader(csvfile)
 
+            if not any(data):
+                print(f"{date} margin empty")
+                return False
+
+            rows = [r for r in data]
             count = 0
 
             margin_idx = None
@@ -1724,7 +1791,8 @@ class MyDataBase():
                     break
                 row_idx += 1
 
-            if margin_idx is None or short_idx is None:
+            if code_idx is None or margin_idx is None or short_idx is None:
+                print(f"{date} margin empty")
                 return False
 
             for r in rows:
@@ -1763,7 +1831,7 @@ class MyDataBase():
 
     def get_code_list(self, klass_mask=None):
 
-        codes = self.load_code()
+        codes = self.load_code(date=now)
         if codes is None:
             print("No code found")
             sys.exit()
@@ -1830,6 +1898,36 @@ class MyDataBase():
         for m in price_month:
             price_stdev[m] = statistics.stdev(price_month[m])
         return price_stdev
+    
+    def load_data(self, code, begin=None, end=None):
+
+        tab = self.load_stock_tab(code=code, begin=begin, end=end)
+        name = self.load_field(tab, "STOCK", "NAME")
+        date = self.load_field(tab, "STOCK", "DATE")
+
+        if len(name) == 0:
+            name = code
+        else:
+            name = name[-1]
+        price = self.load_field(tab, "STOCK", "CPRICE")
+        fluctuation = self.load_field(tab, "STOCK", "FLUCATION")
+        shares = self.load_field(tab, "STOCK", "SHARES")
+        top = self.load_field(tab, "STOCK", "TOP")
+        bottom = self.load_field(tab, "STOCK", "BOTTOM")
+        date = self.load_field(tab, "STOCK", "DATE")
+
+        return {
+            "length": len(tab),
+            "code": code,
+            "name": name,
+            "date": date,
+            "price": price,
+            "fluctuation": fluctuation,
+            "shares": shares,
+            "top": top,
+            "bottom": bottom,
+        }
+
 
 """
     def download_OTC_data_to_sqlite(self, y, m, d):

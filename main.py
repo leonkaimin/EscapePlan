@@ -21,6 +21,7 @@ import scipy.optimize as optmize
 # from MyCodeTab import *
 from MyTime import quarter_to_months, date_to_quarter
 from settings import *
+import re
 now = datetime.now()
 
 cpi = 0.0308
@@ -594,7 +595,6 @@ def analyze(begin=None, end=None, target=None):
     klass_sum["system"] = system_sum
     """
     codes_list = mydb.get_code_list()
-
     mydb.close()
 
     workbook_data = []
@@ -622,14 +622,15 @@ def analyze(begin=None, end=None, target=None):
         # 　  cn_idx += 1
         #     print(f"Pass {code}")
         #     continue
-
-        data = load_data(code, begin=begin, end=end)
+        mydb = MyDataBase()
+        data = mydb.load_data(code, begin=begin, end=end)
         if (data is None):
             print('Data is None. Possibly the duration '
                   'that you specify is too short [{}]'.format(
                       code))
             cn_idx += 1
             continue
+        mydb.close()
         fund = load_fund(code, begin=begin, end=end)
 
         # if fund is None:
@@ -894,15 +895,17 @@ def analyze(begin=None, end=None, target=None):
     return 0
 
 
-def crawling_thread(cur_date, end_date=None):
+def crawling_thread(dates):
 
     mydb = MyDataBase()
 
-    if end_date is None:
-        end_date = cur_date + Datetime.timedelta(days=1)
-    else:
-        end_date = end_date + Datetime.timedelta(days=1)
+    if not dates:  # Check if the list is empty
+        print("crawling_thread: Error parameter")
+        return
 
+    start_date = dates[0]  # First date is always the start date
+    end_date = dates[1] if len(dates) > 1 else start_date + Datetime.timedelta(days=1)  # Default to the next day if only one date is provided
+    cur_date = start_date
     print(
         f"The date to be Crawled is started from {cur_date} and it will be ended at {end_date}")
 
@@ -964,7 +967,7 @@ def crawling_thread(cur_date, end_date=None):
                 legal_data_ok = False
 
         cur_date += Datetime.timedelta(days=1)
-        mydb.commit()
+
         # if listed_data_ok and OTC_fund_ok and OTC_data_ok and OTC_data_ok:
         # if listed_data_ok and fund_ok and amount_ok:
         if listed_data_ok and margin_data_ok and legal_data_ok:
@@ -982,66 +985,48 @@ def crawling_thread(cur_date, end_date=None):
             # print(OTC_fund_ok)
             # print(OTC_data_ok)
             continue
-
+    mydb.commit()
     mydb.close()
 
 
 def crawl_command(opts):
     dates = opt_get_dates(opts)
 
-    dtime = []
-    for d in dates:
-        dtime.append(datetime.strptime(d, '%Y-%m-%d'))
     # print(dtime)
-
-    if len(dates) == 1:
-        crawling_thread(dtime[0])
-    elif len(dates) == 2:
-        crawling_thread(dtime[0], dtime[1])
-    else:
-        print("輸入格式錯誤!")
-        help_command(opts)
-        sys.exit()
+    crawling_thread(dates)
 
 
-def crawl_revenue_thread(d0, d1):
+def crawl_revenue_thread(months):
 
-    d0bak = d0
+    if not months:  # Check if the list is empty
+        print("crawl_revenue_thread: Error parameter")
+        return
 
-    while d1 >= d0:
-        print(f"download revenue {d0.year}/{d0.month}")
-        if mydownload.download_revenue(d0.year-1911, d0.month):
+    start_month = months[0]  # First date is always the start date
+    end_month = months[1] if len(months) > 1 else start_month + relativedelta(months=1, day=1)  # Default to the next day if only one date is provided
+
+    print(
+        f"The date to be Crawled is started from {start_month} and it will be ended at {end_month}")
+    
+    cur_month = start_month
+    while cur_month <= end_month:
+        print(f"download revenue {cur_month.year}/{cur_month.month}")
+        if mydownload.download_revenue(cur_month.year-1911, cur_month.month):
             TIME.sleep(10)
-        d0 = d0 + relativedelta(months=1, day=1)
-
-    d0 = d0bak
+        cur_month = cur_month + relativedelta(months=1, day=1)
 
     mydb = MyDataBase()
-    while d1 >= d0:
-        print(f"insert revenue {d0.year}/{d0.month}")
-        mydb.download_revenue_to_sqlite(d0)
-        d0 = d0 + relativedelta(months=1, day=1)
+    cur_month = start_month
+    while cur_month <= end_month:
+        print(f"insert revenue {cur_month.year}/{cur_month.month}")
+        mydb.download_revenue_to_sqlite(cur_month)
+        cur_month = cur_month + relativedelta(months=1, day=1)
     mydb.close()
 
 
 def crawl_revenue_command(opts):
-    dates = opt_get_dates(opts)
-
-    dtime = []
-    for d in dates:
-        dtime.append(datetime.strptime(d, '%Y-%m'))
-    # print(dtime)
-
-    if len(dates) == 1:
-        crawl_revenue_thread(dtime[0], dtime[0])
-    elif len(dates) == 2:
-        crawl_revenue_thread(dtime[0], dtime[1])
-        pass
-    else:
-        print("輸入格式錯誤!")
-        help_command(opts)
-        sys.exit()
-
+    months = opt_get_month(opts)
+    crawl_revenue_thread(months)
 
 def crawl_NPM_thread(s0, s1):
 
@@ -1133,25 +1118,22 @@ def crawl_BOOK_thread(s0, s1):
 
 
 def crawl_Q_command(opts):
-
-    print("Crawl Season")
-
+    """Initiate crawling based on season arguments."""
     seasons = opt_get_seasons(opts)
 
-    print(seasons)
+    if seasons is None:
+        print("Error: Invalid season format. Please use YYYYQ# format (e.g., 2023Q2 or 2023Q2:2024Q3).")
+        return
 
-    if len(seasons) == 1:
-        crawl_EPS_thread(seasons[0].split('Q'), seasons[0].split('Q'))
-        crawl_BOOK_thread(seasons[0].split('Q'), seasons[0].split('Q'))
-        crawl_NPM_thread(seasons[0].split('Q'), seasons[0].split('Q'))
-    elif len(seasons) == 2:
-        crawl_EPS_thread(seasons[0].split('Q'), seasons[1].split('Q'))
-        crawl_BOOK_thread(seasons[0].split('Q'), seasons[1].split('Q'))
-        crawl_NPM_thread(seasons[0].split('Q'), seasons[1].split('Q'))
-    else:
-        print("輸入格式錯誤!")
-        help_command(opts)
-        sys.exit()
+    print("Crawling Seasons:", seasons)
+
+    start_season, start_q, end_season, end_q = seasons
+
+    # Start crawling threads
+    crawl_EPS_thread([start_season, start_q], [end_season, end_q])
+    crawl_BOOK_thread([start_season, start_q], [end_season, end_q])
+    crawl_NPM_thread([start_season, start_q], [end_season, end_q])
+
 
 
 def load_amount(code, begin=None, end=None):
@@ -1239,35 +1221,6 @@ def load_market_price():
         # print(tab)
 
 
-def load_data(code, begin=None, end=None):
-    mydb = MyDataBase()
-    tab = mydb.load_stock_tab(code=code, begin=begin, end=end)
-    name = mydb.load_field(tab, "STOCK", "NAME")
-    date = mydb.load_field(tab, "STOCK", "DATE")
-
-    if len(name) == 0:
-        name = code
-    else:
-        name = name[-1]
-    price = mydb.load_field(tab, "STOCK", "CPRICE")
-    fluctuation = mydb.load_field(tab, "STOCK", "FLUCATION")
-    shares = mydb.load_field(tab, "STOCK", "SHARES")
-    top = mydb.load_field(tab, "STOCK", "TOP")
-    bottom = mydb.load_field(tab, "STOCK", "BOTTOM")
-    date = mydb.load_field(tab, "STOCK", "DATE")
-    mydb.close()
-
-    return {
-        "length": len(tab),
-        "code": code,
-        "name": name,
-        "date": date,
-        "price": price,
-        "fluctuation": fluctuation,
-        "shares": shares,
-        "top": top,
-        "bottom": bottom,
-    }
 
 
 def check_and_make_dirs(dir_list):
@@ -1276,32 +1229,53 @@ def check_and_make_dirs(dir_list):
             os.makedirs(d)
 
 
-def opt_get_dates(opts):
-    dates = None
+def opt_get_month(opts):
+    """Extract date arguments from command-line options using regular expressions."""
     for opt, arg in opts:
         if opt in ("-t", "--time"):
-            time = arg
-            dates = time.split(':')
-    return dates
+            match = re.match(r"(\d{4}-\d{2})(?::(\d{4}-\d{2}))?", arg)
+            if match:
+                dates = [datetime.strptime(d, "%Y-%m") for d in match.groups() if d]
+                return dates
+    return None  # Return None if no valid date option is found
 
+
+def opt_get_dates(opts):
+    """Extract date arguments from command-line options using regular expressions."""
+    for opt, arg in opts:
+        if opt in ("-t", "--time"):
+            match = re.match(r"(\d{4}-\d{2}-\d{2})(?::(\d{4}-\d{2}-\d{2}))?", arg)
+            if match:
+                dates = [datetime.strptime(d, "%Y-%m-%d") for d in match.groups() if d]
+                return dates
+    return None  # Return None if no valid date option is found
 
 def opt_get_seasons(opts):
-    dates = None
+    """Extract season arguments from command-line options, handling both single and range formats."""
     for opt, arg in opts:
-        if opt in ("-s", "--season"):
-            time = arg
-            dates = time.split(':')
-    return dates
-
+        if opt in ("-t", "--time"):
+            match = re.match(r"(\d{4})Q([1-4])(?::(\d{4})Q([1-4]))?", arg) 
+            if match:
+                groups = match.groups()
+                if groups[2] is None:  # Single quarter (e.g., 2021Q1)
+                    return groups[0], groups[1], groups[0], groups[1]  # Repeat for start/end
+                else:  # Quarter range (e.g., 2021Q1:2024Q4)
+                    return groups
+    return None  # Return None if no valid season option is found
 
 def opt_get_years(opts):
-    years = None
-    for opt, arg in opts:
-        if opt in ("-y", "--year"):
-            time = arg
-            years = time.split(':')
-    return [int(years[0]), int(years[1])]
 
+    """Extract season arguments from command-line options, handling both single and range formats."""
+    for opt, arg in opts:
+        if opt in ("-t", "--time"):
+            match = re.match(r"(\d{4})(?::(\d{4}))?", arg) 
+            if match:
+                groups = match.groups()
+                if groups[1] is None:  # Single quarter (e.g., 2021Q1)
+                    return int(groups[0]), int(groups[0])  # Repeat for start/end
+                else:  # Quarter range (e.g., 2021Q1:2024Q4)
+                    return int(groups[0]), int(groups[1]) 
+    return None  # Return None if no valid season option is found
 
 def opt_get_target(opts):
     target = None
@@ -1336,7 +1310,7 @@ def crawl_basic_command(opts):
     print("Update BASIC")
     mydb = MyDataBase()
     mydb.download_ETF_basic()
-    codes = mydb.load_codename(now)
+    codes = mydb.load_codename(date=now)
     for c in codes:
         code = c[0]
         name = c[1]
@@ -1441,11 +1415,11 @@ def plot_command(opts):
 
 commands = {
     "analyze": analyze_command,
-    "crawl_Q": crawl_Q_command,
     "crawl": crawl_command,
     "crawl_revenue": crawl_revenue_command,
-    "crawl_basic": crawl_basic_command,
+    "crawl_Q": crawl_Q_command,
     "crawl_etf": crawl_etf_command,
+    "crawl_basic": crawl_basic_command,
     "plot": plot_command,
     "help": help_command
 }
@@ -1457,7 +1431,6 @@ if __name__ == "__main__":
             f"{settings['data_root']}/listed_data",
             f"{settings['data_root']}/BOOK",
             f"{settings['data_root']}/amount",
-            f"{settings['data_root']}/database"
             f"{settings['data_root']}/EPS",
             f"{settings['data_root']}/fund",
             f"{settings['data_root']}/NPM",
