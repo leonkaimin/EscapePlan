@@ -19,6 +19,7 @@ from MyTime import quarter_to_months, date_to_quarter, quarter_list
 import re
 from settings import *
 import statistics
+import random
 
 import locale
 locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
@@ -571,18 +572,18 @@ class MyDataBase():
         tab = self.load_book_tab(code)
         return [t[3]for t in tab]
 
-    def load_bond_etf_codename(self, day):
+    def load_bond_etf_codename(self, date):
 
         arr = []
         c = self.conn.cursor()
-        query = SELECT_DISTINCT_CODE_BOND
-        # print(query)
+        query = SELECT_DISTINCT_CODE_BOND.format(date.strftime('%Y-%m-%d'))
+        print(query)
         c.execute(query)
         tab = c.fetchall()
         for i in range(len(tab)):
             arr.append(tab[i])
         if (not len(arr) > 0):
-            prev_day = day - Datetime.timedelta(days=1)
+            prev_day = date - Datetime.timedelta(days=1)
             return self.load_bond_etf_codename(prev_day)
         # print(arr)
         return arr
@@ -614,10 +615,16 @@ class MyDataBase():
         # print(arr)
         return arr
 
-    def load_code(self, date=None, klass=None, like=None):
+    def load_code(self, date=None, klass=None, like=None, random_num=None):
 
         codes = [c[0] for c in self.load_codename(date=date, klass=klass, like=like)]
 
+        rand_codes = []
+        if random_num is not None:
+            for i in range(random_num):
+                r = random.randrange(len(codes))
+                rand_codes.append(codes[r])
+            return rand_codes
         # print(codes)
         return codes
 

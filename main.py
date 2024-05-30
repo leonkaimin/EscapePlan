@@ -93,6 +93,10 @@ def cal_workbook_row(data, fund, klass_sum):
     trading_shares = data["shares"][-1]
     # weighted_avg = mymath.calc_weight_avg(price, amount, 300)
     # weighted_avg_dev = (price[-1] - weighted_avg[-1])/weighted_avg[-1]
+
+    if price[-1] == 0:
+        return cal_workbook_row_fake(code=code, name=name, eps=-10000, reserve=0)
+    print(f"code {code} name {name}")
     mydb = MyDataBase()
     npm = mydb.load_NPM_items(code)
     eps = mydb.load_EPS(code)
@@ -140,9 +144,11 @@ def cal_workbook_row(data, fund, klass_sum):
             if last_eps_quarter is not None:
                 year, months = quarter_to_months(last_eps_quarter)
                 rev_sum = 0
+                median_npm = 0
                 for m in months:
                     rev_sum += mydb.load_revenue_month(code, year, m)
-                median_npm = (last_eps*issue_shares)/(rev_sum*1000)*100
+                if rev_sum != 0:
+                    median_npm = (last_eps*issue_shares)/(rev_sum*1000)*100
                 # print(f"{median_npm:.2f}%")
 
         if median_npm < 0:
@@ -291,13 +297,14 @@ def cal_workbook_row(data, fund, klass_sum):
 
         klass_sum_copy = []
         for d in date:
-            klass_sum_copy.append(klass_sum[k][d])
+            if d in klass_sum[k]:
+                klass_sum_copy.append(klass_sum[k][d])
 
-        beta[k] = mymath.calculate_beta(
-            klass_sum_copy, price)
+        # beta[k] = mymath.calculate_beta(
+        #     klass_sum_copy, price)
         # print(f"{code} {k} beta {beta[k]}")
-        if beta[k] is None:
-            print()
+        # if beta[k] is None:
+        #    print()
 
     return [
         code, name,
@@ -307,10 +314,7 @@ def cal_workbook_row(data, fund, klass_sum):
         last_price, 0, 0, reserve, mcap, mean, pstdev, variance, disc_rate, roe, 0, hot, bias, klass, last_margin, last_short, amount[-1], beta, None, None, None]
 
 
-def cal_workbook_row_fake():
-    code = "0000"
-    name = " 台新活存"
-    eps = 0.032
+def cal_workbook_row_fake(code = "0000", name = " 活存", eps = 0.032, reserve = 500000):
     price = 1
     last_per = price/eps
     predicted_per = last_per
@@ -325,7 +329,6 @@ def cal_workbook_row_fake():
     book_pstdev = 0
     book_variance = 0
     last_price = 1
-    reserve = 1000000
     mcap = 1
     mean = 1
     pstdev = 0
